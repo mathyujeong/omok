@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>중1 수학 - 좌표평면 오목 (실습용)</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background-color: #2c3e50; color: white; font-family: 'Malgun Gothic', sans-serif; }
+        h1 { margin-top: 20px; color: #ecf0f1; }
+        canvas { background-color: #dcb35c; border: 4px solid #5d4037; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .ui-container { display: flex; gap: 30px; margin-top: 20px; background: #34495e; padding: 25px; border-radius: 15px; border: 1px solid #5d6d7e; }
+        .control-group { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .coord-label { font-size: 14px; color: #bdc3c7; }
+        .coord-value { font-size: 28px; font-weight: bold; color: #f1c40f; min-width: 50px; text-align: center; }
+        input[type=range] { width: 160px; cursor: pointer; }
+        .btn-group { display: flex; flex-direction: column; gap: 10px; }
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.2s; }
+        .place-btn { background-color: #27ae60; color: white; width: 180px; font-size: 18px; }
+        .place-btn:hover { background-color: #2ecc71; transform: scale(1.02); }
+        .reset-btn { background-color: #e74c3c; color: white; }
+        .reset-btn:hover { background-color: #ff5e4d; }
+        #status { font-size: 22px; margin: 15px 0; color: #ecf0f1; font-weight: bold; }
+        .current-turn { padding: 5px 15px; border-radius: 20px; background: #2c3e50; border: 2px solid #f1c40f; }
+    </style>
+</head>
+<body>
+
+    <h1>📍 좌표평면 오목 실습</h1>
+    <div id="status">
+        <span class="current-turn" id="turnText">흑돌(Black)의 차례</span>
+    </div>
+
+    <canvas id="board" width="560" height="560"></canvas>
+
+    <div class="ui-container">
+        <div class="control-group">
+            <span class="coord-label">X-Coordinate</span>
+            <input type="range" id="xRange" min="-7" max="7" value="0" oninput="updateUI()">
+            <div class="coord-value" id="xVal">0</div>
+        </div>
+        
+        <div class="control-group">
+            <span class="coord-label">Y-Coordinate</span>
+            <input type="range" id="yRange" min="-7" max="7" value="0" oninput="updateUI()">
+            <div class="coord-value" id="yVal">0</div>
+        </div>
+
+        <div class="btn-group">
+            <button class="place-btn" onclick="placeStone()">착수 (Stone Place)</button>
+            <button class="reset-btn" onclick="resetGame()">판 초기화</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const size = 15; 
+    const cellSize = 35;
+    const margin = 35;
+    
+    let board = Array.from(Array(size), () => Array(size).fill(0));
+    let turn = 1; 
+    let gameOver = false;
+
+    // 슬라이더 숫자만 업데이트 (가이드는 그리지 않음)
+    function updateUI() {
+        document.getElementById('xVal').innerText = document.getElementById('xRange').value;
+        document.getElementById('yVal').innerText = document.getElementById('yRange').value;
+    }
+
+    function drawBoard() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 격자 그리기
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(93, 64, 55, 0.3)";
+        for (let i = 0; i < size; i++) {
+            let pos = margin + i * cellSize;
+            ctx.beginPath(); ctx.moveTo(margin, pos); ctx.lineTo(canvas.width - margin, pos); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(pos, margin); ctx.lineTo(pos, canvas.height - margin); ctx.stroke();
+        }
+
+        // X축, Y축 강조 (좌표평면의 핵심)
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#000000";
+        // X축 (가로 중앙선)
+        ctx.beginPath(); ctx.moveTo(margin, margin + 7 * cellSize); ctx.lineTo(canvas.width - margin, margin + 7 * cellSize); ctx.stroke();
+        // Y축 (세로 중앙선)
+        ctx.beginPath(); ctx.moveTo(margin + 7 * cellSize, margin); ctx.lineTo(margin + 7 * cellSize, canvas.height - margin); ctx.stroke();
+
+        // 좌표 눈금 숫자 표시
+        ctx.fillStyle = "#2c3e50";
+        ctx.font = "bold 11px Arial";
+        ctx.textAlign = "center";
+        for (let i = 0; i < size; i++) {
+            let coordNum = i - 7;
+            if (coordNum !== 0) {
+                // X축 숫자들
+                ctx.fillText(coordNum, margin + i * cellSize, margin + 7 * cellSize + 18);
+                // Y축 숫자들
+                ctx.fillText(coordNum, margin + 7 * cellSize - 15, canvas.height - (margin + i * cellSize) + 4);
+            }
+        }
+
+        // 원점 표시
+        ctx.fillStyle = "#e74c3c";
+        ctx.beginPath(); ctx.arc(margin + 7 * cellSize, margin + 7 * cellSize, 4, 0, Math.PI*2); ctx.fill();
+        ctx.fillText("O", margin + 7 * cellSize - 12, margin + 7 * cellSize - 8);
+
+        // 놓인 돌 그리기
+        for(let r=0; r<size; r++) {
+            for(let c=0; c<size; c++) {
+                if(board[r][c] !== 0) drawStone(c-7, 7-r, board[r][c]);
+            }
+        }
+    }
+
+    function drawStone(x, y, type) {
+        const screenX = margin + (x + 7) * cellSize;
+        const screenY = margin + (7 - y) * cellSize;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, cellSize*0.42, 0, Math.PI*2);
+        
+        const grad = ctx.createRadialGradient(screenX-3, screenY-3, 2, screenX, screenY, cellSize*0.4);
+        if(type === 1) {
+            grad.addColorStop(0, "#555"); grad.addColorStop(1, "#000");
+        } else {
+            grad.addColorStop(0, "#fff"); grad.addColorStop(1, "#bbb");
+        }
+        
+        ctx.fillStyle = grad;
+        ctx.shadowBlur = 5; ctx.shadowColor = "rgba(0,0,0,0.4)";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    function placeStone() {
+        if (gameOver) return;
+        let x = parseInt(document.getElementById('xRange').value);
+        let y = parseInt(document.getElementById('yRange').value);
+        
+        let r = 7 - y;
+        let c = x + 7;
+
+        if (board[r][c] === 0) {
+            board[r][c] = turn;
+            drawBoard();
+            
+            if (checkWin(r, c)) {
+                document.getElementById('turnText').innerText = (turn === 1 ? "흑돌" : "백돌") + " 승리! 🎉";
+                gameOver = true;
+                return;
+            }
+            
+            turn = turn === 1 ? 2 : 1;
+            document.getElementById('turnText').innerText = (turn === 1 ? "흑돌" : "백돌") + "의 차례";
+        } else {
+            alert("이미 돌이 있는 좌표입니다!");
+        }
+    }
+
+    function checkWin(r, c) {
+        const dirs = [[1,0], [0,1], [1,1], [1,-1]];
+        const color = board[r][c];
+        for (let [dr, dc] of dirs) {
+            let count = 1;
+            let nr = r + dr, nc = c + dc;
+            while(nr>=0 && nr<size && nc>=0 && nc<size && board[nr][nc] === color) { count++; nr+=dr; nc+=dc; }
+            nr = r-dr; nc = c-dc;
+            while(nr>=0 && nr<size && nc>=0 && nc<size && board[nr][nc] === color) { count++; nr-=dr; nc-=dc; }
+            if (count >= 5) return true;
+        }
+        return false;
+    }
+
+    function resetGame() {
+        board = Array.from(Array(size), () => Array(size).fill(0));
+        turn = 1; gameOver = false;
+        document.getElementById('turnText').innerText = "흑돌(Black)의 차례";
+        document.getElementById('xRange').value = 0;
+        document.getElementById('yRange').value = 0;
+        updateUI();
+        drawBoard();
+    }
+
+    // 초기 실행
+    drawBoard();
+    updateUI();
+</script>
+</body>
+</html>
